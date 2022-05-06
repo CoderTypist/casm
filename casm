@@ -52,7 +52,7 @@ for func in $functions; do
     disas_start_line="$(echo "$func_disas" | grep -n "(gdb) Dump of assembler" | awk -F: '{ print $1 }')"
     disas_start_line="$((disas_start_line + 1))"
     disas="$(echo "$func_disas" | tail -n +$disas_start_line | head -n -2 )"
-    echo "$disas" > "${dir}/${base}.s"
+    echo "$disas" > "${dir}/${func}.s"
     echo "${func}:" >> "$asm"
     echo "$disas" >> "$asm"
 done
