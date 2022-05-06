@@ -11,6 +11,7 @@ if [ ! -f "$file" ]; then
     exit -1
 fi
 
+# create a directory in which to store the assembly
 dir="${file}_asm"
 if [ -d "$dir" ]; then
     if [ "1" == "$(ls -l "$dir" | wc -l)" ]; then
@@ -20,15 +21,21 @@ if [ -d "$dir" ]; then
     fi
 fi
 mkdir "$dir"
+
+# create a file that will have the assembly of all functions
 base="$(echo "$file" | awk -F/ '{ print $NF }')"
 asm="${dir}/${base}.asm"
 touch "$asm"
 
+# gdb output containing a list of functions
 info_functions="$(echo "info functions" | gdb "$file")"
+# find which line the function list starts on
 list_start_line="$(echo "$info_functions" | grep -n "Non-debugging symbols:" | awk -F: '{ print $1 }')"
 list_start_line="$((list_start_line + 1))"
+# extract the list of functions
 functions="$(echo "$info_functions" | tail -n +$list_start_line | head -n -1 | awk  '{ print $2 }')"
 
+# do not get the assembly for these functions
 functions="$(echo "$functions" | sed '/_init/d')"
 functions="$(echo "$functions" | sed '/__cxa_finalize@plt/d')"
 functions="$(echo "$functions" | sed '/_start/d')"
@@ -48,11 +55,15 @@ fi
 echo "$functions" > "${dir}/functions.txt"
 
 for func in $functions; do
+    # gdb output containing function assembly
     func_disas="$(echo "disas $func" | gdb "$file")"
     disas_start_line="$(echo "$func_disas" | grep -n "(gdb) Dump of assembler" | awk -F: '{ print $1 }')"
     disas_start_line="$((disas_start_line + 1))"
+    # extract function assembly
     disas="$(echo "$func_disas" | tail -n +$disas_start_line | head -n -2 )"
+    # save function assembly to an individual file
     echo "$disas" > "${dir}/${func}.s"
+    # append assembly to the file for the executable
     echo "${func}:" >> "$asm"
     echo "$disas" >> "$asm"
 done
