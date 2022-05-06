@@ -1,0 +1,62 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+    echo "Please specify file"
+    exit -1
+fi
+file="$1"
+
+if [ ! -f "$file" ]; then
+    echo "No such file: $file"
+    exit -1
+fi
+
+dir="${file}_asm"
+if [ -d "$dir" ]; then
+    if [ "1" == "$(ls -l "$dir" | wc -l)" ]; then
+        rmdir "$dir"
+    else
+        rm -r "$dir"
+    fi
+fi
+mkdir "$dir"
+base="$(echo "$file" | awk -F/ '{ print $NF }')"
+asm="${dir}/${base}.asm"
+touch "$asm"
+
+info_functions="$(echo "info functions" | gdb "$file")"
+list_start_line="$(echo "$info_functions" | grep -n "Non-debugging symbols:" | awk -F: '{ print $1 }')"
+list_start_line="$((list_start_line + 1))"
+functions="$(echo "$info_functions" | tail -n +$list_start_line | head -n -1 | awk  '{ print $2 }')"
+
+functions="$(echo "$functions" | sed '/_init/d')"
+functions="$(echo "$functions" | sed '/__cxa_finalize@plt/d')"
+functions="$(echo "$functions" | sed '/_start/d')"
+functions="$(echo "$functions" | sed '/deregister_tm_clones/d')"
+functions="$(echo "$functions" | sed '/register_tm_clones/d')"
+functions="$(echo "$functions" | sed '/__do_global_dtors_aux/d')"
+functions="$(echo "$functions" | sed '/frame_dummy/d')"
+functions="$(echo "$functions" | sed '/__libc_csu_init/d')"
+functions="$(echo "$functions" | sed '/__libc_csu_fini/d')"
+functions="$(echo "$functions" | sed '/_fini/d')"
+
+if [ "0" == "$(echo "functions" | wc -l)" ]; then
+    echo "There are no functions to disassemble"
+    exit -1
+fi
+
+echo "$functions" > "${dir}/functions.txt"
+
+for func in $functions; do
+    func_disas="$(echo "disas $func" | gdb "$file")"
+    disas_start_line="$(echo "$func_disas" | grep -n "(gdb) Dump of assembler" | awk -F: '{ print $1 }')"
+    disas_start_line="$((disas_start_line + 1))"
+    disas="$(echo "$func_disas" | tail -n +$disas_start_line | head -n -2 )"
+    echo "$disas" > "${dir}/${base}.s"
+    echo "${func}:" >> "$asm"
+    echo "$disas" >> "$asm"
+done
+
+
+
+
