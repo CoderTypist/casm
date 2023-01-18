@@ -1,59 +1,69 @@
 #!/bin/bash
 
+# ensure name of binary is provided
 if [ $# -lt 1 ]; then
     echo "Please specify file"
     exit -1
 fi
 file="$1"
 
+# ensure that the file exists
 if [ ! -f "$file" ]; then
     echo "No such file: $file"
     exit -1
 fi
 
-# create a directory in which to store the assembly
+# create a directory in which to store the assembly for each function
 dir="${file}_asm"
+# if a directory already exists, delete it 
 if [ -d "$dir" ]; then
-    if [ "1" == "$(ls -l "$dir" | wc -l)" ]; then
-        rmdir "$dir"
-    else
-        rm -r "$dir"
-    fi
+    rm -r "$dir"
 fi
 mkdir "$dir"
 
 # create a file that will have the assembly of all functions
+
+# get the base name of the file
 base="$(echo "$file" | awk -F/ '{ print $NF }')"
-asm="${dir}/${base}.asm"
-touch "$asm"
+asm_fname="${dir}/${base}.asm"
+# create the file
+touch "$asm_fname"
 
 # gdb output containing a list of functions
 info_functions="$(echo "info functions" | gdb "$file")"
 # find which line the function list starts on
+# we use grep to find a line, -n to include the line number, and awk to extract the line number
 list_start_line="$(echo "$info_functions" | grep -n "Non-debugging symbols:" | awk -F: '{ print $1 }')"
+# we add one to get the line number of the first function
 list_start_line="$((list_start_line + 1))"
 # extract the list of functions
+# we use tail to skip over to grap the ending lines starting from $list_start_line
+# we use head to get the starting lines up the last line (the last line is omitted)
 functions="$(echo "$info_functions" | tail -n +$list_start_line | head -n -1 | awk  '{ print $2 }')"
 
 # do not get the assembly for these functions
-functions="$(echo "$functions" | sed '/_init/d')"
-functions="$(echo "$functions" | sed '/__cxa_finalize@plt/d')"
-functions="$(echo "$functions" | sed '/_start/d')"
-functions="$(echo "$functions" | sed '/deregister_tm_clones/d')"
-functions="$(echo "$functions" | sed '/register_tm_clones/d')"
-functions="$(echo "$functions" | sed '/__do_global_dtors_aux/d')"
-functions="$(echo "$functions" | sed '/frame_dummy/d')"
-functions="$(echo "$functions" | sed '/__libc_csu_init/d')"
-functions="$(echo "$functions" | sed '/__libc_csu_fini/d')"
-functions="$(echo "$functions" | sed '/_fini/d')"
+functions="$(echo "$functions" | sed '/^printf@plt$/d')"
+functions="$(echo "$functions" | sed '/^_init$/d')"
+functions="$(echo "$functions" | sed '/^__cxa_finalize@plt$/d')"
+functions="$(echo "$functions" | sed '/^_start$/d')"
+functions="$(echo "$functions" | sed '/^deregister_tm_clones$/d')"
+functions="$(echo "$functions" | sed '/^register_tm_clones$/d')"
+functions="$(echo "$functions" | sed '/^__do_global_dtors_aux$/d')"
+functions="$(echo "$functions" | sed '/^frame_dummy$/d')"
+functions="$(echo "$functions" | sed '/^__libc_csu_init$/d')"
+functions="$(echo "$functions" | sed '/^__libc_csu_fini$/d')"
+functions="$(echo "$functions" | sed '/^_fini$/d')"
 
+# if there are no functinos
 if [ "0" == "$(echo "functions" | wc -l)" ]; then
     echo "There are no functions to disassemble"
     exit -1
 fi
 
+# store the list of all functions in a .txt file
 echo "$functions" > "${dir}/functions.txt"
 
+# for each function
 for func in $functions; do
     # gdb output containing function assembly
     func_disas="$(echo "disas $func" | gdb "$file")"
@@ -64,10 +74,6 @@ for func in $functions; do
     # save function assembly to an individual file
     echo "$disas" > "${dir}/${func}.s"
     # append assembly to the file for the executable
-    echo "${func}:" >> "$asm"
-    echo "$disas" >> "$asm"
+    echo "${func}:" >> "$asm_fname"
+    echo "$disas" >> "$asm_fname"
 done
-
-
-
-
